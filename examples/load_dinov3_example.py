@@ -5,6 +5,7 @@ DINOv3模型加载和使用示例
 本脚本演示如何加载DINOv3模型并执行各种任务。
 """
 
+import os
 import torch
 from PIL import Image
 from torchvision.transforms import v2
@@ -22,17 +23,54 @@ def make_image_transform(resize_size=224):
     ])
 
 
-def example_1_feature_extraction():
-    """示例1: 基础特征提取"""
+def example_1_feature_extraction(weights_path=None, use_huggingface=False):
+    """示例1: 基础特征提取
+    
+    Args:
+        weights_path: 本地权重文件路径（可选）
+        use_huggingface: 是否使用 Hugging Face 加载模型（可选）
+    """
     print("\n" + "="*50)
     print("示例1: 基础特征提取")
     print("="*50)
     
     # 加载backbone模型
     print("正在加载DINOv3 ViT-B/16模型...")
-    model = torch.hub.load('facebookresearch/dinov3', 'dinov3_vitb16')
-    model.eval()
-    print("模型加载完成!")
+    
+    if use_huggingface:
+        # 使用 Hugging Face 加载（推荐，如果网络可以访问 Hugging Face）
+        try:
+            from transformers import AutoModel
+            print("使用 Hugging Face 加载模型...")
+            model = AutoModel.from_pretrained("facebook/dinov3-vitb16-pretrain-lvd1689m")
+            model.eval()
+            print("模型加载完成!")
+        except Exception as e:
+            print(f"Hugging Face 加载失败: {e}")
+            print("尝试使用 PyTorch Hub...")
+            use_huggingface = False
+    
+    if not use_huggingface:
+        if weights_path and os.path.exists(weights_path):
+            # 使用本地权重文件
+            print(f"从本地路径加载权重: {weights_path}")
+            model = torch.hub.load('facebookresearch/dinov3', 'dinov3_vitb16', 
+                                  source='local', weights=weights_path)
+        else:
+            # 使用 PyTorch Hub（需要网络）
+            try:
+                model = torch.hub.load('facebookresearch/dinov3', 'dinov3_vitb16')
+            except Exception as e:
+                print(f"网络下载失败: {e}")
+                print("\n解决方案：")
+                print("1. 手动下载权重文件：")
+                print("   wget https://dl.fbaipublicfiles.com/dinov3/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m.pth")
+                print("   然后使用: weights_path='./dinov3_vitb16_pretrain_lvd1689m.pth'")
+                print("\n2. 或使用 Hugging Face: use_huggingface=True")
+                print("\n3. 或设置代理/镜像源")
+                raise
+        model.eval()
+        print("模型加载完成!")
     
     # 准备图像 (这里使用一个示例URL，实际使用时替换为你的图像路径)
     print("\n准备图像...")
@@ -244,9 +282,40 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n使用设备: {device}")
     
+    # 检查是否有本地权重文件或使用 Hugging Face
+    weights_path = None
+    use_huggingface = False
+    
+    # 方法1: 检查环境变量
+    if os.getenv("DINOV3_WEIGHTS_PATH"):
+        weights_path = os.getenv("DINOV3_WEIGHTS_PATH")
+        print(f"使用环境变量指定的权重路径: {weights_path}")
+    
+    # 方法2: 检查常见路径
+    common_paths = [
+        "./dinov3_vitb16_pretrain_lvd1689m.pth",
+        "./weights/dinov3_vitb16_pretrain_lvd1689m.pth",
+        "~/dinov3_weights/dinov3_vitb16_pretrain_lvd1689m.pth",
+    ]
+    for path in common_paths:
+        expanded_path = os.path.expanduser(path)
+        if os.path.exists(expanded_path):
+            weights_path = expanded_path
+            print(f"找到本地权重文件: {weights_path}")
+            break
+    
+    # 方法3: 如果没有本地权重，尝试使用 Hugging Face
+    if not weights_path:
+        print("\n提示: 如果网络下载失败，可以：")
+        print("1. 手动下载权重: wget https://dl.fbaipublicfiles.com/dinov3/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m.pth")
+        print("2. 使用 Hugging Face: 设置环境变量 USE_HUGGINGFACE=1")
+        if os.getenv("USE_HUGGINGFACE", "0") == "1":
+            use_huggingface = True
+            print("使用 Hugging Face 加载模型...")
+    
     # 运行示例
     try:
-        example_1_feature_extraction()
+        example_1_feature_extraction(weights_path=weights_path, use_huggingface=use_huggingface)
         example_2_image_classification()
         example_3_custom_classifier()
         example_4_feature_similarity()
